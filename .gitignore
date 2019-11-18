@@ -5,3 +5,5 @@ lib
 log
 jfa
 .idea/
+.idea
+.DS_Store

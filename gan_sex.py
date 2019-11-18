@@ -1,20 +1,24 @@
-from __future__ import print_function
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import os
 from myPlot import scatter2D
-from ivec_utilis_sex import load_ivectors, get_filenames1, extract_data
+from ivec_utils import load_ivectors, get_filenames1, extract_data
 from sklearn.manifold import TSNE
 from keras.utils import np_utils
 import pickle
+from collections import Counter
 import scipy.io as sio
+import operator
+from functools import reduce
+
+
 def xavier_init(size):
     in_dim = size[0]
     xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
     return tf.truncated_normal(shape=size, stddev=xavier_stddev)
+
 
 def sample_Z(m, n):
     return np.random.uniform(-1., 1., size=[m, n])
@@ -22,12 +26,13 @@ def sample_Z(m, n):
 def select_speakers(x, spk_lbs, gender_lbs, gender='male', min_n_vecs=50, n_spks=-1):
     lbs = 0 if gender == 'male' else 1
     idx = [t for t, e in enumerate(gender_lbs) if e == lbs]
-    sel_x, sel_spk_lbs, out_x, out_spk_lbs = extract_data(x[idx, :], spk_lbs[idx], min_n_vecs=min_n_vecs, n_spks=n_spks, shuffle=False)
-    return sel_x, sel_spk_lbs, out_x, out_spk_lbs
+    sel_x, sel_spk_lbs = extract_data(x[idx, :], spk_lbs[idx], min_n_vecs=min_n_vecs, shuffle=False)
+    return sel_x, sel_spk_lbs
+
 
 # Define some constants
 latent_dim = 500
-datadir = 'data/'
+datadir = 'alt_data/'
 logdir = 'log/'
 n_fac = 500
 n_gauss = 1024
@@ -38,19 +43,23 @@ min_n_trn_vecs = 20
 min_n_tst_vecs = 20
 min_n_vecs = min_n_trn_vecs + min_n_tst_vecs        # Min. no. of i-vectors per speaker
 # # Load training and test data
-matfiles, gender = get_filenames1(datadir, n_gauss, n_fac)
+matfiles, gender = get_filenames1(datadir, n_gauss, n_fac, ['mic'])
 x_dat, sex_dat, spk_dat = load_ivectors(matfiles, gender, shuffle=False)
 #
 # # Select speakers with at least min_n_ivecs i-vectors (sex_trn==0 for male and ==1 for female)
-m_x, m_spk_lbs, out_m_x, out_m_spk_lbs = select_speakers(x_dat, spk_dat, sex_dat, gender='male', min_n_vecs=min_n_vecs, n_spks=-1)
-out_n_male_spks = np.max(out_m_spk_lbs) + 1
-n_male_spks = np.max(m_spk_lbs) + 1
-#
-f_x, f_spk_lbs, out_f_x, out_f_spk_lbs  = select_speakers(x_dat, spk_dat, sex_dat, gender='female', min_n_vecs=min_n_vecs, n_spks=-1)
-n_female_spks = np.max(f_spk_lbs) + 1
-out_n_female_spks = np.max(out_f_spk_lbs) + 1
-f_spk_lbs = [i + n_male_spks for i in f_spk_lbs]        # Speaker labels start from 0 and consecutive
-out_f_spk_lbs = [i + out_n_male_spks for i in out_f_spk_lbs]
+m_x, m_spk_lbs= select_speakers(x_dat, spk_dat, sex_dat, gender='male', min_n_vecs=min_n_vecs, n_spks=-1)
+count_dict = Counter(m_spk_lbs)
+m_spk_lbs = [[idx] * count_dict[lb] for idx, lb in enumerate(np.unique(m_spk_lbs))]
+m_spk_lbs = reduce(operator.concat, m_spk_lbs)
+n_male_spks = len(np.unique(m_spk_lbs))
+
+f_x, f_spk_lbs = select_speakers(x_dat, spk_dat, sex_dat, gender='female', min_n_vecs=min_n_vecs, n_spks=-1)
+n_female_spks = len(np.unique(f_spk_lbs))
+count_dict = Counter(f_spk_lbs)
+f_spk_lbs = [[idx + n_male_spks] * count_dict[lb] for idx, lb in enumerate(np.unique(f_spk_lbs))]
+f_spk_lbs = reduce(operator.concat, f_spk_lbs)
+# f_spk_lbs = [i + n_male_spks for i in f_spk_lbs]        # Speaker labels start from 0 and consecutive
+# out_f_spk_lbs = [i + out_n_male_spks for i in out_f_spk_lbs]
 # Load training and test data
 
 
@@ -58,18 +67,18 @@ out_f_spk_lbs = [i + out_n_male_spks for i in out_f_spk_lbs]
 x = np.vstack([m_x, f_x])
 spk_lbs = np.hstack([m_spk_lbs, f_spk_lbs])
 sex_lbs = np.asarray([0]*len(m_spk_lbs) + [1]*len(f_spk_lbs))
-n_spks = np.max(spk_lbs) + 1
+n_spks = len(np.unique(spk_lbs))
 
 
 all_male = np.vstack([m_x])
 all_male_spk_lbs = np.hstack([m_spk_lbs])
 all_male_sex_lbs = np.asarray([0]*len(m_spk_lbs) )
-all_male_n_spks = np.max(all_male_spk_lbs) + 1
+all_male_n_spks = len(np.unique(all_male_spk_lbs))
 
 all_female = np.vstack([f_x])
 all_female_spk_lbs = np.hstack([f_spk_lbs])
-all_female_sex_lbs = np.asarray([0]*len(f_spk_lbs))
-all_female_n_spks = np.max(all_female_spk_lbs) + 1
+all_female_sex_lbs = np.asarray([1]*len(f_spk_lbs))
+all_female_n_spks = len(np.unique(all_female_spk_lbs))
 # all_male = np.vstack([m_x, out_m_x])
 # all_male_spk_lbs = np.hstack([m_spk_lbs, out_m_spk_lbs])
 # all_male_sex_lbs = np.asarray([0]*len(m_spk_lbs) + [1]*len(out_m_spk_lbs))
@@ -84,11 +93,6 @@ sio.savemat('data/sre_all_male.mat',
             {'w': all_male, 'spk_logical': all_male_spk_lbs})
 sio.savemat('data/sre_all_female.mat',
             {'w': all_female, 'spk_logical': all_female_spk_lbs})
-# trial = sio.loadmat('/home7b/lxli/matlab_mPLDA/mat/fw60/sre16_eval_tstutt_t500_w_1024c.mat')
-# sre16_enroll = sio.loadmat('/home7b/lxli/matlab_mPLDA/mat/fw60/SRE16_enroll+major.mat')
-# all_enc = np.empty((0, 300), dtype='float32')
-# trial_enc = np.empty((0, 300), dtype='float32')
-# enroll_enc = np.empty((0, 300), dtype='float32')
 
 
 # Prepare training data
@@ -98,7 +102,7 @@ spk_lbs_trn = list()
 sex_lbs_trn = list()
 for spk in range(n_spks):
     idx = [t for t, e in enumerate(spk_lbs) if e == spk]
-    idx_trn = idx[0:min_n_trn_vecs]
+    idx_trn = idx[:min_n_trn_vecs]
     x_trn = np.vstack([x_trn, x[idx_trn, :]])
     spk_lbs_trn.extend([spk] * len(idx_trn))
     sex_lbs_trn.extend(sex_lbs[idx_trn].tolist())
@@ -128,13 +132,6 @@ for m_spk in range(int(n_tst_spks/2)):                           # Select n_tst_
     spk_lbs_tst.extend([m_spk] * len(idx_tst))
     sex_lbs_tst.extend(sex_lbs[idx_tst].tolist())
 c = int(n_tst_spks/2)
-#
-# for m_spk in range(int(np.max(m_spk_lbs + 1))):                           # Select n_tst_spks/2 male speakers
-#     idx = [t for t, e in enumerate(spk_lbs) if e == m_spk]
-#     idx_tst = idx[min_n_trn_vecs:]                          # Ensure tst vectors are not the same as trn vec
-#     x_tst_male= np.vstack([x_tst_male, x[idx_tst, :]])
-#     spk_lbs_tst_male.extend([m_spk] * len(idx_tst))
-#     sex_lbs_tst_male.extend(sex_lbs[idx_tst].tolist())
 
 
 for f_spk in range(n_male_spks, n_male_spks + int(n_tst_spks/2)): # Select n_tst_spks/2 female speakers
@@ -145,12 +142,6 @@ for f_spk in range(n_male_spks, n_male_spks + int(n_tst_spks/2)): # Select n_tst
     sex_lbs_tst.extend(sex_lbs[idx_tst].tolist())
     c = c + 1
 
-# for f_spk in range(int(np.max(f_spk_lbs + 1))):                           # Select n_tst_spks/2 male speakers
-#     idx = [t for t, e in enumerate(spk_lbs) if e == f_spk]
-#     idx_tst = idx[min_n_trn_vecs:]                          # Ensure tst vectors are not the same as trn vec
-#     x_tst_female= np.vstack([x_tst_female, x[idx_tst, :]])
-#     spk_lbs_tst_female.extend([m_spk] * len(idx_tst))
-#     sex_lbs_tst_female.extend(sex_lbs[idx_tst].tolist())
 
 spk_lbs_tst = np.asarray(spk_lbs_tst)
 sex_lbs_tst = np.asarray(sex_lbs_tst)
@@ -167,20 +158,6 @@ D_b2 = tf.Variable(tf.zeros(shape=[num_hidden_D]))
 D_W3 = tf.Variable(xavier_init([num_hidden_D, 2]))
 D_b3 = tf.Variable(tf.zeros(shape=[2]))
 
-# G_W1 = tf.Variable(xavier_init([300, num_hidden_G]))
-# G_b1 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W2 = tf.Variable(xavier_init([num_hidden_G, num_hidden_G]))
-# G_b2 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W3 = tf.Variable(xavier_init([num_hidden_G, num_hidden_G]))
-# G_b3 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W4 = tf.Variable(xavier_init([num_hidden_G, num_hidden_G]))
-# G_b4 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W5 = tf.Variable(xavier_init([num_hidden_G, num_hidden_G]))
-# G_b5 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W6 = tf.Variable(xavier_init([num_hidden_G, num_hidden_G]))
-# G_b6 = tf.Variable(tf.zeros(shape=[num_hidden_G]))
-# G_W7 = tf.Variable(xavier_init([num_hidden_G, 300]))
-# G_b7 = tf.Variable(tf.zeros(shape=[300]))
 
 G_W1_D = tf.Variable(xavier_init([500, int(1 * num_hidden_G / 3)]))
 G_W1_C = tf.Variable(xavier_init([500, int(2 * num_hidden_G / 3)]))
@@ -208,45 +185,6 @@ C_b2 = tf.Variable(tf.zeros(shape=[num_hidden_C]))
 C_W3 = tf.Variable(xavier_init([num_hidden_C, spk_1h_trn.shape[1]]))
 C_b3 = tf.Variable(tf.zeros(shape=[spk_1h_trn.shape[1]]))
 
-# def batch_norm_2(x, phase):
-#
-#         h1 = tf.contrib.layers.batch_norm(x,
-#                                           center=True, scale=True, epsilon = 0.001, decay=0.5,
-#                                           is_training=phase)
-#         return h1
-#
-# def generator(x, train_flag = 1):
-#
-#     x_norm = batch_norm_2(x, train_flag)
-#     G_h1 = tf.nn.relu(tf.matmul(x_norm, G_W1) + G_b1)
-#     G_h1_norm = batch_norm_2(G_h1, train_flag)
-#     G_h2= tf.matmul(G_h1_norm, G_W2) + G_b2
-#     G_h2_norm = batch_norm_2(G_h2, train_flag)
-#     G_log_prob= tf.matmul(G_h2_norm, G_W3) + G_b3
-#     G_prob = tf.nn.sigmoid(G_log_prob)
-#
-#     return G_prob
-#
-#
-# def discriminator(z, train_flag = 1):
-#     z_norm = batch_norm_2(z, train_flag)
-#     D_h1 = tf.nn.relu(tf.matmul(z_norm, D_W1) + D_b1)
-#     D_h1_norm = batch_norm_2(D_h1, train_flag)
-#     D_h2 = tf.nn.relu(tf.matmul(D_h1_norm, D_W2) + D_b2)
-#     D_h2_norm = batch_norm_2(D_h2, train_flag)
-#     D_logit = tf.matmul(D_h2_norm, D_W3) + D_b3
-#     D_prob = tf.nn.softmax(D_logit)
-#     return D_prob, D_logit
-#
-# def classifier(z, train_flag = 1):
-#     z_norm = batch_norm_2(z, train_flag)
-#     C_h1 = tf.nn.relu(tf.matmul(z_norm, C_W1) + C_b1)
-#     C_h1_norm = batch_norm_2(C_h1, train_flag)
-#     C_h2 = tf.nn.relu(tf.matmul(C_h1_norm, C_W2) + C_b2)
-#     C_h2_norm = batch_norm_2(C_h2, train_flag)
-#     C_logit = tf.matmul(C_h2_norm, C_W3) + C_b3
-#     C_prob = tf.nn.softmax(C_logit)
-#     return C_prob, C_logit
 
 def batch_norm(Wx_plus_b, out_size, train_flag):
     # if train_flag == True:
@@ -475,7 +413,6 @@ def main():
                                              title='Adversarially Transformed I-Vectors (Epoch = %d)' % it)
                 filename = logdir + 'aae4-%d-%d-epoch%d.png' % (500, min_n_vecs, it)
                 fig.savefig(filename)
-                plt.show(block=False)
         loss_list.append(G_loss_C_curr)
     print('Creating t-SNE plot')
     x_prj = TSNE(random_state=20150101).fit_transform(x_tst)
@@ -510,62 +447,12 @@ def main():
     sio.savemat('data/sre_all_female_enc.mat',
                 {'w': all_female_enc, 'spk_logical': all_female_spk_lbs})
 
-
     print("Successfully Saved Mat File.")
-    # Create an AAE object and train the AAE
-    # ad_tx = AdversarialTx(f_dim=x_trn.shape[1], z_dim=latent_dim, n_cls=np.max(spk_lbs_trn) + 1)
-    #
-    # # Iteratively train the AAE. Display results for every eint
-    # for it in range(int(n_epochs/eint)):
-    #     epoch = (it + 1)*eint
-    #     ad_tx.train(x_trn, spk_1h_trn, sex_1h_trn, n_epochs=eint, batch_size=128)
-    #
-    #     # Encode the test i-vectors
-    #     encoder = ad_tx.get_encoder()
-    #     x_tst_enc = encoder.predict(x_tst)............................
-    #
-    #     # all_enc = np.vstack((all_enc, x_tst_enc))
-    #
-    #
-    #     # Plot the encoded vectors
-    #     if latent_dim > 2:
-    #         print('Creating t-SNE plot')
-    #         x_tst_enc_prj = TSNE(random_state=20150101).fit_transform(x_tst_enc)
-    #     else:
-    #         x_tst_enc_prj = x_tst_enc
-    #     fig, _, _, _ = scatter2D(x_tst_enc_prj, spk_lbs_tst, markers=sex_lbs_tst, n_colors=n_tst_spks,
-    #                              title='Adversarially Transformed I-Vectors (Epoch = %d)' % epoch)
-    #     filename = logdir + 'aae4-%d-%d-epoch%d.png' % (latent_dim, min_n_vecs, epoch)
-    #     fig.savefig(filename)
-    #     plt.show(block=False)
-
-
-    # all_enc = encoder.predict(x_dat)
-    # sio.savemat('data/encoded_weight.mat', {'w': all_enc})
-    # trial_enc = encoder.predict(trial['w'])
-    # sio.savemat('data/encoded_tst_SRE16.mat',
-    #             {'w': trial_enc, 'spk_logical': trial['spk_logical'], 'spk_physical': trial['spk_physical'],
-    #              'num_frames': trial['num_frames']})
-    # enroll_enc = encoder.predict(sre16_enroll['w'])
-    # sio.savemat('data/encoded_enroll_SRE16.mat',
-    #             {'w': enroll_enc, 'spk_logical': sre16_enroll['spk_logical'], 'L': sre16_enroll['L']})
-
-
-
-    # Use t-SNE to plot the i-vectors on 2-D space
-    # print('Creating t-SNE plot')
-    # x_prj = TSNE(random_state=20150101).fit_transform(x_tst)
-    # fig, _, _, _ = scatter2D(x_prj, spk_lbs_tst, markers=sex_lbs_tst, n_colors=n_tst_spks,
-    #                          title='Original i-vectors')
-    # filename = logdir + 'ivec-%d.png' % n_fac
-    # fig.savefig(filename)
-    # plt.show()
 
 if __name__ == '__main__':
     # Use 1/3 of the GPU memory so that the GPU can be shared by multiple users
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     np.random.seed(1)
-
     main()
 
