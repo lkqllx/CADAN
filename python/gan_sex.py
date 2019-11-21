@@ -390,7 +390,7 @@ def main():
                                                                                train_flag: 1})
             for i in range(2):
                 _, C_loss_curr = sess.run([C_solver, C_loss], feed_dict={X: x, spk_label: y_spk_1h, train_flag: 1})
-            if it % 1 == 0 and batch == 1:
+            if it % 10 == 0 and batch == 1:
                 D_logit_curr = sess.run([D], feed_dict={X: x, sex_X: y_sex_1h, train_flag: 1})
                 print('Iter: {}'.format(it))
                 print('C_loss: {:.4}'.format(C_loss_curr))
@@ -412,7 +412,9 @@ def main():
                 fig, _, _, _ = scatter2D(x_tst_enc_prj, spk_lbs_tst, markers=sex_lbs_tst, n_colors=n_tst_spks,
                                              title='Adversarially Transformed I-Vectors (Epoch = %d)' % it)
                 filename = logdir + 'aae4-%d-%d-epoch%d.png' % (500, min_n_vecs, it)
+
                 fig.savefig(filename)
+                plt.show(block=False)
         loss_list.append(G_loss_C_curr)
     print('Creating t-SNE plot')
     x_prj = TSNE(random_state=20150101).fit_transform(x_tst)
