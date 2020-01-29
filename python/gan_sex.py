@@ -44,7 +44,7 @@ min_n_tst_vecs = 20
 min_n_vecs = min_n_trn_vecs + min_n_tst_vecs        # Min. no. of i-vectors per speaker
 # # Load training and test data
 matfiles, gender = get_filenames1(datadir, n_gauss, n_fac, ['mic'])
-x_dat, sex_dat, spk_dat = load_ivectors(matfiles, gender, shuffle=False)
+x_dat, sex_dat, spk_dat = load_ivectors(matfiles, ['male', 'female'], shuffle=False)
 #
 # # Select speakers with at least min_n_ivecs i-vectors (sex_trn==0 for male and ==1 for female)
 m_x, m_spk_lbs= select_speakers(x_dat, spk_dat, sex_dat, gender='male', min_n_vecs=min_n_vecs, n_spks=-1)
@@ -347,10 +347,10 @@ def main():
     G_loss = G_loss_C + G_loss_D
 
     D_solver = tf.train.AdamOptimizer(0.00001).minimize(D_loss, var_list=theta_D)
-    # G_solver = tf.train.AdamOptimizer(0.001).minimize(G_loss, var_list=theta_G)
+    # G_solver = tf.train.AdamOptimizer(0.01).minimize(G_loss, var_list=theta_G)
     C_solver = tf.train.AdamOptimizer(0.00001).minimize(C_loss, var_list=[theta_C])
-    G_C_solver = tf.train.AdamOptimizer(0.00001).minimize(G_loss_C, var_list=theta_G_C)
-    G_D_solver = tf.train.AdamOptimizer(0.00005).minimize(G_loss_D, var_list=theta_G_D)
+    G_C_solver = tf.train.AdamOptimizer(0.0001).minimize(G_loss_C, var_list=theta_G_C)
+    G_D_solver = tf.train.AdamOptimizer(0.000005).minimize(G_loss_D, var_list=theta_G_D)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -362,7 +362,8 @@ def main():
     batch_size = 128
     n_batches = int(x_trn.shape[0] / batch_size)
     loss_list = []
-    for it in range(351):
+    for it in range(201):
+        # 150 epoch seems a good iteration
         pidx = np.random.permutation(x_trn.shape[0])
         for batch in range(n_batches):
             idx = pidx[batch * batch_size: (batch + 1) * batch_size]
@@ -382,14 +383,15 @@ def main():
 
             for i in range(1):
                 _, D_loss_curr = sess.run([D_solver, D_loss], feed_dict={X: x, sex_X: y_sex_1h, train_flag: 1})
-            for i in range(3):
+            for i in range(1):
                 _, G_loss_D_curr = sess.run([G_D_solver, G_loss_D], feed_dict={X: x, sex_X:y_sex_1h, spk_label: y_spk_1h,
                                                                            train_flag: 1})
-            for i in range(5):
+            for i in range(3):
                 _, G_loss_C_curr = sess.run([G_C_solver, G_loss_C], feed_dict={X: x, sex_X: y_sex_1h, spk_label: y_spk_1h,
                                                                                train_flag: 1})
-            for i in range(2):
+            for i in range(1):
                 _, C_loss_curr = sess.run([C_solver, C_loss], feed_dict={X: x, spk_label: y_spk_1h, train_flag: 1})
+
             if it % 10 == 0 and batch == 1:
                 D_logit_curr = sess.run([D], feed_dict={X: x, sex_X: y_sex_1h, train_flag: 1})
                 print('Iter: {}'.format(it))
@@ -453,7 +455,7 @@ def main():
 
 if __name__ == '__main__':
     # Use 1/3 of the GPU memory so that the GPU can be shared by multiple users
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.666)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
     np.random.seed(1)
     main()

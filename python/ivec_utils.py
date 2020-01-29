@@ -19,10 +19,10 @@ def get_filenames1(datadir='data/', n_gauss=512, n_fac=300, noise_types=['mic'])
     trn_matfile = []
     trn_gender = []
     for noise in noise_types:
-        trn_matfile.append(f'{datadir}male_target-{noise}-06dB_mix_t{n_fac}_w_{n_gauss}c.mat')
+        trn_matfile.append(f'{datadir}male_target-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
         trn_gender.append('male')
     for noise in noise_types:
-        trn_matfile.append(f'{datadir}female_target-{noise}-06dB_mix_t{n_fac}_w_{n_gauss}c.mat')
+        trn_matfile.append(f'{datadir}female_target-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
         trn_gender.append('female')
     return trn_matfile, trn_gender
 
