@@ -23,17 +23,14 @@ def xavier_init(size):
 def sample_Z(m, n):
     return np.random.uniform(-1., 1., size=[m, n])
 
-def select_speakers(x, spk_lbs, gender_lbs, gender='male', min_n_vecs=50, n_spks=-1):
-    lbs = 0 if gender == 'male' else 1
-    idx = [t for t, e in enumerate(gender_lbs) if e == lbs]
-    sel_x, sel_spk_lbs = extract_data(x[idx, :], spk_lbs[idx], min_n_vecs=min_n_vecs, shuffle=False)
-    return sel_x, sel_spk_lbs
-
 
 # Define some constants
+
+
 latent_dim = 500
 datadir = '../alt_data/'
 logdir = '../log/'
+noise_types = ['babble', 'car']
 n_fac = 500
 n_gauss = 1024
 n_epochs = 3000
@@ -42,18 +39,27 @@ n_tst_spks = 20         # No. of test speakers, must be an even number
 min_n_trn_vecs = 20
 min_n_tst_vecs = 20
 min_n_vecs = min_n_trn_vecs + min_n_tst_vecs        # Min. no. of i-vectors per speaker
+
+
+def select_speakers(x, spk_lbs, gender_lbs, gender='male', min_n_vecs=50, n_spks=-1):
+    lbs = 0 if gender == noise_types[0] else 1
+    idx = [t for t, e in enumerate(gender_lbs) if e == lbs]
+    sel_x, sel_spk_lbs = extract_data(x[idx, :], spk_lbs[idx], min_n_vecs=min_n_vecs, shuffle=False)
+    return sel_x, sel_spk_lbs
+
+
 # # Load training and test data
-matfiles, gender = get_filenames1(datadir, n_gauss, n_fac, ['mic'])
-x_dat, sex_dat, spk_dat = load_ivectors(matfiles, ['male', 'female'], shuffle=False)
+matfiles, matClass = get_filenames1(datadir, n_gauss, n_fac, noise_types=noise_types, channel_types=['mic'])
+x_dat, clsLabel, spk_dat = load_ivectors(matfiles, matClass, shuffle=False)
 #
 # # Select speakers with at least min_n_ivecs i-vectors (sex_trn==0 for male and ==1 for female)
-m_x, m_spk_lbs= select_speakers(x_dat, spk_dat, sex_dat, gender='male', min_n_vecs=min_n_vecs, n_spks=-1)
+m_x, m_spk_lbs= select_speakers(x_dat, spk_dat, clsLabel, gender=noise_types[0], min_n_vecs=min_n_vecs, n_spks=-1)
 count_dict = Counter(m_spk_lbs)
 m_spk_lbs = [[idx] * count_dict[lb] for idx, lb in enumerate(np.unique(m_spk_lbs))]
 m_spk_lbs = reduce(operator.concat, m_spk_lbs)
 n_male_spks = len(np.unique(m_spk_lbs))
 
-f_x, f_spk_lbs = select_speakers(x_dat, spk_dat, sex_dat, gender='female', min_n_vecs=min_n_vecs, n_spks=-1)
+f_x, f_spk_lbs = select_speakers(x_dat, spk_dat, clsLabel, gender=noise_types[1], min_n_vecs=min_n_vecs, n_spks=-1)
 n_female_spks = len(np.unique(f_spk_lbs))
 count_dict = Counter(f_spk_lbs)
 f_spk_lbs = [[idx + n_male_spks] * count_dict[lb] for idx, lb in enumerate(np.unique(f_spk_lbs))]
@@ -89,9 +95,9 @@ all_female_n_spks = len(np.unique(all_female_spk_lbs))
 # all_female_sex_lbs = np.asarray([0]*len(f_spk_lbs) + [1]*len(out_f_spk_lbs))
 # all_female_n_spks = np.max(all_female_spk_lbs) + 1
 
-sio.savemat('../data/sre_all_male.mat',
+sio.savemat(f'../data/sre_all_{noise_types[0]}.mat',
             {'w': all_male, 'spk_logical': all_male_spk_lbs})
-sio.savemat('..//sre_all_female.mat',
+sio.savemat(f'..//sre_all_{noise_types[1]}.mat',
             {'w': all_female, 'spk_logical': all_female_spk_lbs})
 
 
@@ -344,7 +350,7 @@ def main():
     G_loss_C = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=C_logit, labels=spk_label))
 
 
-    G_loss = G_loss_C + G_loss_D
+    # G_loss = G_loss_C + G_loss_D
 
     D_solver = tf.train.AdamOptimizer(0.00001).minimize(D_loss, var_list=theta_D)
     # G_solver = tf.train.AdamOptimizer(0.01).minimize(G_loss, var_list=theta_G)
@@ -444,11 +450,11 @@ def main():
                 {'w': x_tst, 'spk_logical': spk_lbs_tst})
 
     all_male_enc = sess.run(G_log_prob, feed_dict={X: all_male, train_flag: 1})
-    sio.savemat('../data/sre_all_male_enc.mat',
+    sio.savemat(f'../data/sre_all_{noise_types[0]}_enc.mat',
                 {'w': all_male_enc, 'spk_logical': all_male_spk_lbs})
 
     all_female_enc = sess.run(G_log_prob, feed_dict={X: all_female, train_flag: 1})
-    sio.savemat('../data/sre_all_female_enc.mat',
+    sio.savemat(f'../data/sre_all_{noise_types[1]}_enc.mat',
                 {'w': all_female_enc, 'spk_logical': all_female_spk_lbs})
 
     print("Successfully Saved Mat File.")

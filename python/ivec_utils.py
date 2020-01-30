@@ -4,7 +4,7 @@ import numpy as np
 import scipy.io as sio
 
 
-def get_filenames1(datadir='data/', n_gauss=512, n_fac=300, noise_types=['mic']):
+def get_filenames1(datadir='data/', n_gauss=512, n_fac=300, noise_types=['babble'], channel_types=['mic']):
     """
     # Get trn and tst filenames and their corresponding gender
     # Consider the first 3 i-vector files as training file and the 4th
@@ -17,14 +17,19 @@ def get_filenames1(datadir='data/', n_gauss=512, n_fac=300, noise_types=['mic'])
 
     # Use ivecFile1 to ivecFile3 for training
     trn_matfile = []
-    trn_gender = []
-    for noise in noise_types:
-        trn_matfile.append(f'{datadir}male_target-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
-        trn_gender.append('male')
-    for noise in noise_types:
-        trn_matfile.append(f'{datadir}female_target-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
-        trn_gender.append('female')
-    return trn_matfile, trn_gender
+    trn_cls = []
+    if len(noise_types) >= 2:
+        for noise in noise_types:
+            trn_matfile.append(f'{datadir}male_target-mic-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
+            trn_cls.append(noise)
+    elif len(channel_types) >= 2:
+        for channel in channel_types:
+            trn_matfile.append(f'{datadir}male_target-{channel}-06dB_t{n_fac}_w_{n_gauss}c.mat')
+            trn_cls.append(channel)
+    # for noise in noise_types:
+    #     trn_matfile.append(f'{datadir}female_target-{noise}-06dB_t{n_fac}_w_{n_gauss}c.mat')
+    #     trn_gender.append('female')
+    return trn_matfile, trn_cls
 
 
 # Load data from .mat files. Return the i-vectors, gender labels
@@ -41,7 +46,7 @@ def load_ivectors(mat_files, gender, shuffle=False):
         data = sio.loadmat(mat_files[i])
         w = np.array(data['w'], dtype='float32')
         n_vecs = w.shape[0]
-        if gender[i] == 'male':
+        if i == 0:
             l = np.zeros(n_vecs, dtype='int32')
         else:
             l = np.ones(n_vecs, dtype='int32')
