@@ -30,7 +30,7 @@ def sample_Z(m, n):
 latent_dim = 500
 datadir = '../alt_data/'
 logdir = '../log/'
-noise_types = ['babble', 'car']
+noise_types = ['factory', 'car']
 n_fac = 500
 n_gauss = 1024
 n_epochs = 3000
